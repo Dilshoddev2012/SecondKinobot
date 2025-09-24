@@ -83,13 +83,19 @@ def register_user(user):
         print(f"Database error: {e}")
     conn.close()
 
-def get_all_users():
+def get_all_users(page=1, per_page=20):
     conn = sqlite3.connect('movies.db')
     c = conn.cursor()
-    c.execute("SELECT user_id, username, first_name, last_name FROM users")
+    offset = (page - 1) * per_page
+    
+    c.execute("SELECT user_id, username, first_name, last_name FROM users LIMIT ? OFFSET ?", (per_page, offset))
     users = c.fetchall()
+    
+    c.execute("SELECT COUNT(*) FROM users")
+    total_count = c.fetchone()[0]
+    
     conn.close()
-    return users
+    return users, total_count
 
 def get_user_by_id(user_id):
     conn = sqlite3.connect('movies.db')
@@ -306,6 +312,10 @@ def search_movies(query, page=1, per_page=5):
     conn.close()
     return movies, total_count
 
+def search_movies_for_deletion(query, page=1, per_page=5):
+    """Search movies specifically for deletion with pagination"""
+    return search_movies(query, page, per_page)
+
 def get_movie_by_id(movie_id):
     conn = sqlite3.connect('movies.db')
     c = conn.cursor()
@@ -338,7 +348,7 @@ def get_random_movie():
     conn.close()
     return movie
 
-def get_all_movies_for_admin(page=1, per_page=10):
+def get_all_movies_for_admin(page=1, per_page=5):
     conn = sqlite3.connect('movies.db')
     c = conn.cursor()
     offset = (page - 1) * per_page
@@ -355,7 +365,7 @@ def get_all_movies_for_admin(page=1, per_page=10):
 
 # Message broadcasting function
 def broadcast_message(message_obj):
-    users = get_all_users()
+    users, total_count = get_all_users(1, 10000)  # Get all users for broadcasting
     successful = 0
     failed = 0
     
@@ -505,6 +515,70 @@ def create_search_pagination(query, current_page, total_pages, movies):
     
     return markup
 
+# Create pagination for movies list (admin)
+def create_movies_list_pagination(current_page, total_pages, movies):
+    markup = types.InlineKeyboardMarkup()
+    
+    # Pagination buttons
+    nav_buttons = []
+    if current_page > 1:
+        nav_buttons.append(types.InlineKeyboardButton("⬅️ Oldingi", callback_data=f"movies_list_{current_page-1}"))
+    
+    nav_buttons.append(types.InlineKeyboardButton(f"{current_page}/{total_pages}", callback_data="page_info"))
+    
+    if current_page < total_pages:
+        nav_buttons.append(types.InlineKeyboardButton("Keyingi ➡️", callback_data=f"movies_list_{current_page+1}"))
+    
+    if nav_buttons:
+        markup.row(*nav_buttons)
+    
+    return markup
+
+# Create pagination for movie deletion search
+def create_deletion_search_pagination(query, current_page, total_pages, movies):
+    markup = types.InlineKeyboardMarkup()
+    
+    # Movie buttons for deletion
+    for movie in movies:
+        movie_id, title, description, file_id, file_size, download_count = movie
+        size_text = format_file_size(file_size) if file_size > 0 else "N/A"
+        button_text = f"❌ {title[:25]}{'...' if len(title) > 25 else ''} | 📊 {download_count} | 📁 {size_text}"
+        markup.add(types.InlineKeyboardButton(button_text, callback_data=f"delete_movie_{movie_id}"))
+    
+    # Pagination buttons
+    nav_buttons = []
+    if current_page > 1:
+        nav_buttons.append(types.InlineKeyboardButton("⬅️ Oldingi", callback_data=f"delete_search_{query}_{current_page-1}"))
+    
+    nav_buttons.append(types.InlineKeyboardButton(f"{current_page}/{total_pages}", callback_data="page_info"))
+    
+    if current_page < total_pages:
+        nav_buttons.append(types.InlineKeyboardButton("Keyingi ➡️", callback_data=f"delete_search_{query}_{current_page+1}"))
+    
+    if nav_buttons:
+        markup.row(*nav_buttons)
+    
+    return markup
+
+# Create pagination for users list (admin)
+def create_users_pagination(current_page, total_pages):
+    markup = types.InlineKeyboardMarkup()
+    
+    # Pagination buttons
+    nav_buttons = []
+    if current_page > 1:
+        nav_buttons.append(types.InlineKeyboardButton("⬅️ Oldingi", callback_data=f"users_list_{current_page-1}"))
+    
+    nav_buttons.append(types.InlineKeyboardButton(f"{current_page}/{total_pages}", callback_data="page_info"))
+    
+    if current_page < total_pages:
+        nav_buttons.append(types.InlineKeyboardButton("Keyingi ➡️", callback_data=f"users_list_{current_page+1}"))
+    
+    if nav_buttons:
+        markup.row(*nav_buttons)
+    
+    return markup
+
 # Callback query handlers
 @bot.callback_query_handler(func=lambda call: call.data == "check_subscription")
 def check_subscription_callback(call):
@@ -544,6 +618,76 @@ def handle_search_pagination(call):
         bot.answer_callback_query(call.id, "Xatolik yuz berdi!")
         print(f"Search pagination error: {e}")
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("movies_list_"))
+def handle_movies_list_pagination(call):
+    try:
+        page = int(call.data.split("_")[2])
+        movies, total_count = get_all_movies_for_admin(page, 5)
+        total_pages = (total_count + 4) // 5
+        
+        if movies:
+            text = f"🎬 <b>Kinolar ro'yxati</b> (Sahifa {page}/{total_pages})\nJami: {total_count} ta kino\n\n"
+            
+            for i, movie in enumerate(movies, 1):
+                movie_id, title, description, file_size, download_count, added_date = movie
+                size_text = format_file_size(file_size) if file_size > 0 else "N/A"
+                
+                text += f"{(page-1)*5 + i}. <b>{title}</b>\n"
+                text += f"   📊 {download_count} yuklab olish | 📁 {size_text}\n"
+                text += f"   📅 {added_date[:10]}\n\n"
+            
+            markup = create_movies_list_pagination(page, total_pages, movies)
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, 
+                                parse_mode='HTML', reply_markup=markup)
+        else:
+            bot.answer_callback_query(call.id, "Kinolar topilmadi!")
+    except Exception as e:
+        bot.answer_callback_query(call.id, "Xatolik yuz berdi!")
+        print(f"Movies list pagination error: {e}")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("delete_search_"))
+def handle_delete_search_pagination(call):
+    try:
+        parts = call.data.split("_")
+        query = parts[2]
+        page = int(parts[3])
+        
+        movies, total_count = search_movies_for_deletion(query, page, 5)
+        total_pages = (total_count + 4) // 5
+        
+        if movies:
+            text = f"🗑 O'chirish uchun qidiruv: '{query}'\n📊 Jami: {total_count} ta kino\nSahifa: {page}/{total_pages}\n\n"
+            markup = create_deletion_search_pagination(query, page, total_pages, movies)
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
+        else:
+            bot.answer_callback_query(call.id, "Hech narsa topilmadi!")
+    except Exception as e:
+        bot.answer_callback_query(call.id, "Xatolik yuz berdi!")
+        print(f"Delete search pagination error: {e}")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("users_list_"))
+def handle_users_list_pagination(call):
+    try:
+        page = int(call.data.split("_")[2])
+        users, total_count = get_all_users(page, 20)
+        total_pages = (total_count + 19) // 20
+        
+        if users:
+            text = f"👥 <b>Foydalanuvchilar ro'yxati</b> (Sahifa {page}/{total_pages})\nJami: {total_count} ta foydalanuvchi\n\n"
+            
+            for i, (user_id, username, first_name, last_name) in enumerate(users, 1):
+                display_name = first_name or username or user_id
+                text += f"{(page-1)*20 + i}. {display_name} ({user_id})\n"
+            
+            markup = create_users_pagination(page, total_pages)
+            bot.edit_message_text(text, call.message.chat.id, call.message.message_id, 
+                                parse_mode='HTML', reply_markup=markup)
+        else:
+            bot.answer_callback_query(call.id, "Foydalanuvchilar topilmadi!")
+    except Exception as e:
+        bot.answer_callback_query(call.id, "Xatolik yuz berdi!")
+        print(f"Users list pagination error: {e}")
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("movie_"))
 def handle_movie_selection(call):
     try:
@@ -575,6 +719,26 @@ def handle_movie_selection(call):
     except Exception as e:
         bot.answer_callback_query(call.id, "Xatolik yuz berdi!")
         print(f"Movie selection error: {e}")
+
+# Add callback handler for movie deletion
+@bot.callback_query_handler(func=lambda call: call.data.startswith("delete_movie_"))
+def handle_movie_deletion(call):
+    try:
+        movie_id = int(call.data.split("_")[2])
+        movie = get_movie_by_id(movie_id)
+        
+        if movie:
+            movie_id, title, description, file_id, file_size, download_count = movie
+            if delete_movie_by_id(movie_id):
+                bot.answer_callback_query(call.id, f"✅ '{title}' o'chirildi!")
+                bot.edit_message_text(f"✅ Kino '{title}' muvaffaqiyatli o'chirildi!", call.message.chat.id, call.message.message_id)
+            else:
+                bot.answer_callback_query(call.id, "❌ O'chirishda xatolik!")
+        else:
+            bot.answer_callback_query(call.id, "❌ Kino topilmadi!")
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Xatolik yuz berdi!")
+        print(f"Movie deletion error: {e}")
 
 # Handle chat join requests for zayafka channels
 @bot.chat_join_request_handler()
@@ -822,25 +986,18 @@ def handle_admin_commands(message):
         bot.register_next_step_handler(msg, process_movie_file)
         
     elif message.text == "Kino o'chirish 🗑":
-        movies, total_count = get_all_movies_for_admin(1, 10)
-        if movies:
-            text = "🗑 O'chirmoqchi bo'lgan kinoni tanlang:\n\n"
-            markup = types.InlineKeyboardMarkup()
-            
-            for movie in movies:
-                movie_id, title, description, file_size, download_count, added_date = movie
-                size_text = format_file_size(file_size) if file_size > 0 else "N/A"
-                button_text = f"❌ {title[:30]}{'...' if len(title) > 30 else ''} | 📊 {download_count}"
-                markup.add(types.InlineKeyboardButton(button_text, callback_data=f"delete_{movie_id}"))
-            
-            bot.send_message(message.chat.id, text, reply_markup=markup)
-        else:
-            bot.send_message(message.chat.id, "Kinolar bazasi bo'sh! ⚠️")
+        msg = bot.send_message(
+            message.chat.id,
+            "O'chirmoqchi bo'lgan kino nomini yozing 📝\n(Kino nomining bir qismini yoza olasiz)",
+            reply_markup=get_cancel_markup()
+        )
+        bot.register_next_step_handler(msg, process_movie_deletion_search)
             
     elif message.text == "Kinolar ro'yxati 🎬":
-        movies, total_count = get_all_movies_for_admin(1, 20)
+        movies, total_count = get_all_movies_for_admin(1, 5)
         if movies:
-            text = f"🎬 <b>Kinolar ro'yxati</b> (Jami: {total_count})\n\n"
+            total_pages = (total_count + 4) // 5
+            text = f"🎬 <b>Kinolar ro'yxati</b> (Sahifa 1/{total_pages})\nJami: {total_count} ta kino\n\n"
             
             for i, movie in enumerate(movies, 1):
                 movie_id, title, description, file_size, download_count, added_date = movie
@@ -849,13 +1006,9 @@ def handle_admin_commands(message):
                 text += f"{i}. <b>{title}</b>\n"
                 text += f"   📊 {download_count} yuklab olish | 📁 {size_text}\n"
                 text += f"   📅 {added_date[:10]}\n\n"
-                
-                if len(text) > 3500:  # Telegram message limit
-                    bot.send_message(message.chat.id, text, parse_mode='HTML')
-                    text = ""
             
-            if text:
-                bot.send_message(message.chat.id, text, parse_mode='HTML')
+            markup = create_movies_list_pagination(1, total_pages, movies)
+            bot.send_message(message.chat.id, text, parse_mode='HTML', reply_markup=markup)
         else:
             bot.send_message(message.chat.id, "Kinolar bazasi bo'sh! ⚠️")
             
@@ -872,13 +1025,13 @@ def handle_admin_commands(message):
         c.execute("SELECT SUM(file_size) FROM movies")
         total_size = c.fetchone()[0] or 0
         
-        users_count = len(get_all_users())
+        users, total_users_count = get_all_users(1, 10000)
         
         conn.close()
         
         stats_text = "📊 <b>Bot statistikasi</b>\n\n"
         stats_text += f"🎬 Jami kinolar: <b>{movies_count}</b>\n"
-        stats_text += f"👥 Foydalanuvchilar: <b>{users_count}</b>\n"
+        stats_text += f"👥 Foydalanuvchilar: <b>{total_users_count}</b>\n"
         stats_text += f"⬇️ Jami yuklab olishlar: <b>{total_downloads}</b>\n"
         stats_text += f"💾 Jami hajm: <b>{format_file_size(total_size)}</b>\n"
         
@@ -1055,17 +1208,20 @@ def handle_admin_commands(message):
         bot.register_next_step_handler(msg, process_direct_message_step1)
         
     elif message.text == "Userlar 👥":
-        users = get_all_users()
+        users, total_count = get_all_users(1, 20)
         if not users:
             text = "Foydalanuvchilar ro'yxati bo'sh 📝"
+            bot.send_message(message.chat.id, text)
         else:
-            text = f"Foydalanuvchilar ro'yxati 📝 (jami: {len(users)}):\n\n"
-            for i, (user_id, username, first_name, last_name) in enumerate(users[:20], 1):
+            total_pages = (total_count + 19) // 20
+            text = f"👥 <b>Foydalanuvchilar ro'yxati</b> (Sahifa 1/{total_pages})\nJami: {total_count} ta foydalanuvchi\n\n"
+            
+            for i, (user_id, username, first_name, last_name) in enumerate(users, 1):
                 display_name = first_name or username or user_id
                 text += f"{i}. {display_name} ({user_id})\n"
-            if len(users) > 20:
-                text += f"\n...va yana {len(users) - 20} foydalanuvchi"
-        bot.send_message(message.chat.id, text)
+            
+            markup = create_users_pagination(1, total_pages)
+            bot.send_message(message.chat.id, text, parse_mode='HTML', reply_markup=markup)
         
     elif message.text == "Kinolar bazasi 💾":
         try:
@@ -1103,6 +1259,32 @@ def handle_admin_commands(message):
         else:
             bot.send_message(message.chat.id, "Xatolik yuz berdi ⚠️")
         
+        show_admin_menu(message.chat.id)
+
+# Movie deletion search handler
+def process_movie_deletion_search(message):
+    if message.text == "❌ Bekor qilish":
+        bot.send_message(message.chat.id, "Amal bekor qilindi ❌")
+        show_admin_menu(message.chat.id)
+        return
+        
+    query = message.text.strip()
+    if len(query) < 2:
+        bot.send_message(message.chat.id, "Kamida 2 ta harf yozing! 📝")
+        show_admin_menu(message.chat.id)
+        return
+    
+    movies, total_count = search_movies_for_deletion(query, 1, 5)
+    total_pages = (total_count + 4) // 5
+    
+    if movies:
+        text = f"🗑 O'chirish uchun qidiruv: '{query}'\n📊 Jami: {total_count} ta kino\nSahifa: 1/{total_pages}\n\n"
+        markup = create_deletion_search_pagination(query, 1, total_pages, movies)
+        bot.send_message(message.chat.id, text, reply_markup=markup)
+    else:
+        suggestion_text = f"🔍 '{query}' bo'yicha hech narsa topilmadi! 😔\n\n"
+        suggestion_text += "💡 Boshqa nom bilan qidirib ko'ring yoki to'liq nom kiriting."
+        bot.send_message(message.chat.id, suggestion_text)
         show_admin_menu(message.chat.id)
 
 # Movie management handlers
@@ -1158,26 +1340,6 @@ def save_new_movie(message, title, file_id, file_size):
     else:
         bot.send_message(message.chat.id, "Kinoni qo'shishda xatolik yuz berdi! ⚠️")
     show_admin_menu(message.chat.id)
-
-# Add callback handler for movie deletion
-@bot.callback_query_handler(func=lambda call: call.data.startswith("delete_"))
-def handle_movie_deletion(call):
-    try:
-        movie_id = int(call.data.split("_")[1])
-        movie = get_movie_by_id(movie_id)
-        
-        if movie:
-            movie_id, title, description, file_id, file_size, download_count = movie
-            if delete_movie_by_id(movie_id):
-                bot.answer_callback_query(call.id, f"✅ '{title}' o'chirildi!")
-                bot.edit_message_text(f"✅ Kino '{title}' muvaffaqiyatli o'chirildi!", call.message.chat.id, call.message.message_id)
-            else:
-                bot.answer_callback_query(call.id, "❌ O'chirishda xatolik!")
-        else:
-            bot.answer_callback_query(call.id, "❌ Kino topilmadi!")
-    except Exception as e:
-        bot.answer_callback_query(call.id, "❌ Xatolik yuz berdi!")
-        print(f"Movie deletion error: {e}")
 
 def process_channel_type_selection(message):
     if message.text == "❌ Bekor qilish":
