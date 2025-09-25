@@ -9,7 +9,7 @@ import random
 import string
 
 # Bot token
-bot = telebot.TeleBot('7758722083:AAFUPC_XfMZ8R_njVQ8qtMeeK6AtG07s-ZY')
+bot = telebot.TeleBot('87758722083:AAFUPC_XfMZ8R_njVQ8qtMeeK6AtG07s-ZY')
 
 # Initialize database
 def init_db():
@@ -892,7 +892,7 @@ def handle_user_messages(message):
         msg = bot.send_message(
             message.chat.id,
             "🔍 Qidirmoqchi bo'lgan kino nomini yozing:\n\n"
-            "Masalan: 'Avengers', 'Titanic', 'Avatar' va h.k."
+            "Masalan: 'Qasoskorlar', 'Titanik', 'Avatar' va h.k."
         )
         bot.register_next_step_handler(msg, process_search_query)
         
@@ -981,7 +981,6 @@ def process_search_query(message):
         suggestion_text = f"🔍 '{query}' bo'yicha hech narsa topilmadi! 😔\n\n"
         suggestion_text += "💡 <b>Maslahatlar:</b>\n"
         suggestion_text += "• Kino nomini to'liq yozing\n"
-        suggestion_text += "• Inglizcha nomini ham sinab ko'ring\n"
         suggestion_text += "• Imlo xatolarini tekshiring\n\n"
         suggestion_text += "📝 Agar kerakli kino yo'q bo'lsa, admin bilan bog'laning!"
         
