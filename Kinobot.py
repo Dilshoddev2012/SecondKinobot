@@ -485,6 +485,9 @@ def get_main_menu():
     )
     markup.add(
         types.KeyboardButton("🔥 Top kinolar"),
+        types.KeyboardButton("📋 Film buyurtma berish")
+    )
+    markup.add(
         types.KeyboardButton("📞 Aloqa")
     )
     return markup
@@ -806,7 +809,8 @@ def start(message):
         welcome_text = "🎬 Kinolar botiga xush kelibsiz!\n\n"
         welcome_text += "🔍 Kino qidirish - Kino nomini yozing\n"
         welcome_text += "🎭 Random kino - Tasodifiy kino olish\n"  
-        welcome_text += "🔥 Top kinolar - Eng ko'p yuklangan kinolar"
+        welcome_text += "🔥 Top kinolar - Eng ko'p yuklangan kinolar\n"
+        welcome_text += "📋 Film buyurtma berish - Kerakli filmni so'rash"
         
         bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_menu())
 
@@ -932,11 +936,24 @@ def handle_user_messages(message):
             bot.send_message(message.chat.id, text, parse_mode='HTML', reply_markup=markup)
         else:
             bot.send_message(message.chat.id, "Hozircha kinolar bazasi bo'sh! 😔")
+
+    elif message.text == "📋 Film buyurtma berish":
+        # Get user's name
+        user_name = message.from_user.first_name or message.from_user.username or "Foydalanuvchi"
+        
+        # Create message text
+        order_text = f"Xurmatli {user_name}, agar film buyurtma berishni istasangiz pastdagi adminmizga filmdan lavha yoki nomini yuboring!"
+        
+        # Create admin button
+        markup = types.InlineKeyboardMarkup()
+        admin_button = types.InlineKeyboardButton("👨‍💼 Admin", url="https://t.me/jurayev_r07")
+        markup.add(admin_button)
+        
+        bot.send_message(message.chat.id, order_text, reply_markup=markup)
             
     elif message.text == "📞 Aloqa":
         contact_text = "📞 <b>Bog'lanish uchun</b>\n\n"
         contact_text += "📱 Telegram: @jurayev_r07\n"
-
         
         bot.send_message(message.chat.id, contact_text, parse_mode='HTML')
         
